@@ -1,0 +1,52 @@
+name: Build and Deploy to AWS ECR
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+      
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+      
+    - name: Create appsettings.json
+      run: |
+        cat > appsettings.json << EOF
+        {
+          "ConnectionStrings": {
+            "DefaultConnection": "Server=${{ secrets.DB_SERVER }};Database=${{ secrets.DB_NAME }};User=${{ secrets.DB_USER }};Password=${{ secrets.DB_PASSWORD }};"
+          },
+          "Logging": {
+            "LogLevel": {
+              "Default": "Information",
+              "Microsoft.AspNetCore": "Warning"
+            }
+          },
+          "AllowedHosts": "*"
+        }
+        EOF
+        
+    - name: Build and push image to AWS ECR
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+      run: |
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:jellybean .
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:jellybean
