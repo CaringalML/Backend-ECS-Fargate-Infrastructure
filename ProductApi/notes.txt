@@ -1,0 +1,46 @@
+dotnet new webapi -n ProductApi
+cd ProductApi
+
+// -------------------------------------------
+// Instructions for adding EF Core migrations:
+// -------------------------------------------
+
+//Add required packages
+dotnet add package Microsoft.EntityFrameworkCore --version 6.0.27
+dotnet add package Microsoft.EntityFrameworkCore.Design --version 6.0.27
+dotnet add package Microsoft.EntityFrameworkCore.Tools --version 6.0.27
+dotnet add package Pomelo.EntityFrameworkCore.MySql --version 6.0.2
+
+
+//Create database migration:
+dotnet ef migrations add InitialCreate
+
+//Apply migration to create database schema:
+dotnet ef database update
+
+//Update EF tools (to fix warning)
+dotnet tool update --global dotnet-ef --version 6.0.27
+
+
+//Troubleshooting commands we used
+dotnet clean
+dotnet restore --force
+dotnet nuget locals all --clear
+dotnet build
+
+
+// -------------------------------------------
+// To create a new migration after model changes:
+// -------------------------------------------
+// dotnet ef migrations add [MigrationName]
+// dotnet ef database update
+
+
+
+//test in postman
+
+GET /api/products - Get all products
+GET /api/products/{id} - Get a specific product
+POST /api/products - Create a product
+PUT /api/products/{id} - Update a product
+DELETE /api/products/{id} - Delete a product

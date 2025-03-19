@@ -1,0 +1,130 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'fontSize': '16px', 'fontFamily': 'arial' }}}%%
+flowchart TB
+    %% Styling
+    classDef internet fill:#FF9900,color:#000000,stroke:#FF9900
+    classDef awsService fill:#FFFFFF,color:#232F3E,stroke:#232F3E,stroke-width:2px
+    classDef publicSubnet fill:#FFE4B5,color:#232F3E,stroke:#FF9900
+    classDef privateSubnet fill:#E8F6FF,color:#232F3E,stroke:#147EBA
+    classDef securityGroup fill:#E6E6E6,color:#232F3E,stroke:#666666,stroke-dasharray: 5 5
+    classDef networkService fill:#F7FBFF,color:#232F3E,stroke:#147EBA
+    classDef database fill:#FFFFFF,color:#232F3E,stroke:#C925D1
+    classDef managementService fill:#FFFFFF,color:#232F3E,stroke:#147EBA
+    classDef monitoring fill:#E6F3FF,color:#232F3E,stroke:#147EBA
+    
+    %% External Services
+    Client((Internet Users<br/>HTTPS Traffic)):::internet
+    Route53[Route 53 DNS<br/>Domain: martincaringal.co.nz]:::awsService
+    ACM[ACM Certificate<br/>Wildcard: *.martincaringal.co.nz]:::awsService
+    
+    %% VPC Container
+    subgraph VPC["VPC (192.168.0.0/24) - ap-southeast-2"]
+        direction TB
+        
+        %% Security Groups
+        subgraph SecurityGroups["Security Groups"]
+            ALBSG["ALB SG<br/>Inbound: 80, 443<br/>Source: 0.0.0.0/0"]:::securityGroup
+            EcsSG["ECS SG<br/>Inbound: 80<br/>Source: ALB SG"]:::securityGroup
+            RDSSG["RDS SG<br/>Inbound: 3306<br/>Source: ECS SG"]:::securityGroup
+        end
+        
+        %% Load Balancer
+        subgraph LoadBalancer["Application Load Balancer"]
+            ALB["ALB<br/>HTTP/HTTPS Listeners<br/>SSL Termination<br/>Health Checks: /"]:::awsService
+        end
+        
+        %% Availability Zone A
+        subgraph AZA["Availability Zone A (ap-southeast-2a)"]
+            direction TB
+            
+            %% Public Subnet A
+            subgraph PublicA["Public Subnet A"]
+                PublicSubnet1["CIDR: 192.168.0.0/26<br/>Auto-assign Public IP: Yes"]:::publicSubnet
+                NATA["NAT Gateway A<br/>Elastic IP"]:::networkService
+            end
+            
+            %% Private Subnet A
+            subgraph PrivateA["Private Subnet A"]
+                PrivateSubnet1["CIDR: 192.168.0.128/26<br/>Auto-assign Public IP: No"]:::privateSubnet
+            end
+        end
+        
+        %% Availability Zone B
+        subgraph AZB["Availability Zone B (ap-southeast-2b)"]
+            direction TB
+            
+            %% Public Subnet B
+            subgraph PublicB["Public Subnet B"]
+                PublicSubnet2["CIDR: 192.168.0.64/26<br/>Auto-assign Public IP: Yes"]:::publicSubnet
+                NATB["NAT Gateway B<br/>Elastic IP"]:::networkService
+            end
+            
+            %% Private Subnet B
+            subgraph PrivateB["Private Subnet B"]
+                PrivateSubnet2["CIDR: 192.168.0.192/26<br/>Auto-assign Public IP: No"]:::privateSubnet
+            end
+        end
+        
+        %% ECS Cluster
+        subgraph Compute["ECS Cluster (laravel-node)"]
+            direction TB
+            FargateService["Fargate Service<br/>Desired Count: 2<br/>Max Count: 20<br/>Platform Version: LATEST"]:::awsService
+            subgraph AutoScaling["Auto Scaling Policies"]
+                CPUScaling["CPU Target: 70%<br/>Scale Out: 1m<br/>Scale In: 5m"]:::awsService
+                MemoryScaling["Memory Target: 80%<br/>Scale Out: 1m<br/>Scale In: 5m"]:::awsService
+                RequestScaling["Request Count Target: 1000<br/>Scale Out: 1m<br/>Scale In: 5m"]:::awsService
+            end
+            TaskDef["Task Definition<br/>CPU: 1024 (1 vCPU)<br/>Memory: 2048 MB<br/>Container Port: 80"]:::awsService
+        end
+        
+        %% Database
+        subgraph Database["RDS Database"]
+            direction TB
+            RDS["MySQL 8.0.35<br/>Instance: db.t3.micro<br/>Storage: 20GB GP2<br/>Backup Retention: 7 days<br/>Maintenance: Mon 04:00-05:00"]:::database
+            subgraph DBSubnetGroup["DB Subnet Group"]
+                DBSubnet1["Private Subnet 1"]:::privateSubnet
+                DBSubnet2["Private Subnet 2"]:::privateSubnet
+            end
+        end
+        
+        %% Management & Monitoring
+        subgraph Management["Management Services"]
+            direction TB
+            Secrets["Secrets Manager<br/>Laravel Secrets<br/>DB Credentials<br/>API Keys"]:::managementService
+            ECR["ECR Repository<br/>Image Scanning: Enabled<br/>Tag Mutability: Mutable<br/>Max Images: 30"]:::managementService
+            
+            subgraph Monitoring["Monitoring & Logs"]
+                CWLogs["CloudWatch Logs<br/>Retention: 30 days"]:::monitoring
+                CWAlarms["CloudWatch Alarms<br/>CPU, Memory, 5XX Errors"]:::monitoring
+                ContainerInsights["Container Insights<br/>Performance Metrics"]:::monitoring
+            end
+        end
+        
+        %% Endpoints
+        subgraph Endpoints["VPC Endpoints"]
+            S3Endpoint["S3 Gateway Endpoint<br/>Private S3 Access"]:::networkService
+            ECREndpoint["ECR API Endpoint<br/>Private Image Pulls"]:::networkService
+        end
+    end
+    
+    %% Connections with Labels
+    Client -- "DNS Resolution" --> Route53
+    Route53 -- "DNS Record" --> ALB
+    ACM -- "SSL Certificate" --> ALB
+    
+    ALB -- "HTTP/HTTPS Traffic" --> PublicSubnet1 & PublicSubnet2
+    PublicSubnet1 & PublicSubnet2 -- "NAT Traffic" --> NATA & NATB
+    NATA & NATB -- "Internet Access" --> PrivateSubnet1 & PrivateSubnet2
+    
+    PrivateSubnet1 & PrivateSubnet2 -- "Container Traffic" --> FargateService
+    FargateService -- "Task Config" --> TaskDef
+    FargateService -- "DB Queries" --> RDS
+    FargateService -- "Secrets Access" --> Secrets
+    FargateService -- "Container Logs" --> CWLogs
+    FargateService -- "Image Pulls" --> ECR
+    
+    S3Endpoint -- "S3 Access" --> PrivateSubnet1 & PrivateSubnet2
+    ECREndpoint -- "ECR Access" --> PrivateSubnet1 & PrivateSubnet2
+    
+    ALBSG -- "Security Rules" --> ALB
+    EcsSG -- "Security Rules" --> FargateService
+    RDSSG -- "Security Rules" --> RDS
