@@ -81,8 +81,22 @@ This infrastructure implements a modern, scalable, and highly available architec
    - `DB_USER`: Database username
    - `DB_PASSWORD`: Database password
    - `ECR_REPOSITORY`: ECR repository name
-3. Update other configuration parameters in `terraform.tfvars` as needed
-4. Push changes to the main branch to trigger the GitHub Actions workflow
+3. **Create your own terraform.tfvars file** (this file is in .gitignore):
+   ```
+   # Required database variables
+   db_name     = "yourdbname"
+   db_username = "yourusername"
+   db_password = "yourpassword"
+   
+   # Optional variables you may want to customize
+   aws_region = "your-preferred-region"
+   domain_name = "your-domain.com"
+   project_name = "YourProjectName" 
+   
+   # Add any other variables you want to override
+   ```
+4. Update other configuration parameters in your terraform.tfvars as needed
+5. Push changes to the main branch to trigger the GitHub Actions workflow
 
 ## Configuration Variables
 
@@ -389,6 +403,8 @@ The following outputs are available after deployment:
 
 ## Security Considerations
 
+- The `terraform.tfvars` file is included in `.gitignore` to prevent committing sensitive information
+- You must create your own `terraform.tfvars` file locally with database credentials
 - Database credentials are securely stored as GitHub Actions secrets and injected during deployment
 - Consider enabling deletion protection in production
 - Database has `skip_final_snapshot` set to true, which should be changed in production
